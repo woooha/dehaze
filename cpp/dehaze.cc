@@ -12,26 +12,36 @@ using cv::Vec;
 using std::cout;
 using std::endl;
 using std::min;
+using std::max;
+using cv::Rect;
+using cv::rectangle;
+using cv::Scalar;
+using cv::Range;
+using cv::sortIdx;
 
 uchar min( Vec3b vec ) {
     return min(vec[0], min(vec[1], vec[2]));
 }
 
+uchar max( Vec3b vec ) {
+    return max(vec[0], max(vec[1], vec[2]));
+}
+
 Mat dehaze( const char * filename, size_t patchSize ){
-    std::cout << "Load image from: " << filename << std::endl;
+    cout << "Load image from: " << filename << endl;
     Mat img = imread(filename);
     if( img.data != NULL ){
-        std::cout << "Loaded image successed." << std::endl;
+        cout << "Loaded image successed." << endl;
         return dehaze(img, patchSize);
     } else {
-        std::cout << "Load image error, check whether image file exists or not." << std::endl;
+        cout << "Load image error, check whether image file exists or not." << endl;
     }
     return Mat();
 }
 
 void debugImageInfo( Mat img ){
     Size size = img.size();
-    std::cout << "Image has size :( " << size.width << ", " << size.height << " )." << std::endl;
+    cout << "Image has size :( " << size.width << ", " << size.height << " )." << endl;
 }
 
 uchar darkValue( Mat &img, int row, int col, size_t patchSize ) {
@@ -58,9 +68,10 @@ Mat dehaze( Mat img, size_t patchSize ) {
     debugImageInfo( img );
     // 得到图片的 Dark Channel.
     Mat darkChannel = darkChannelOfImage( img, patchSize );
-    cv::Rect rect = hazestRectOfImage( darkChannel, 0.001 );
-    cv::rectangle(darkChannel, rect, cv::Scalar(255) );
-    return darkChannel;
+    Vec3b airlight = airlightOfImage(img, darkChannel, 0.001);
+    Mat t = transimissionOfImage(img, airlight);
+    Mat dehazedImg = recoverImage( img, airlight, t, 0.1);
+    return dehazedImg;
 }
 
 Mat darkChannelOfImage( Mat image, size_t patchSize ) {
@@ -91,14 +102,14 @@ Mat darkChannelOfImage( Mat image, size_t patchSize ) {
     return darkChannelMat;
 }
 
-cv::Rect hazestRectOfImage( Mat img, float ratio ) {
+Rect hazestRectOfImage( Mat img, float ratio ) {
     Size imgSize = img.size();
     int nPoints = imgSize.width * imgSize.height;
     int nSelectedPoints = nPoints * ratio;
     Mat newimg = img.reshape( 0, 1 ); 
     Mat sortedIndice;
-    cv::sortIdx(newimg, sortedIndice, CV_SORT_EVERY_ROW + CV_SORT_DESCENDING);
-    Mat hazestPoints = Mat(sortedIndice, cv::Range::all(), cv::Range(0, nSelectedPoints));
+    sortIdx(newimg, sortedIndice, CV_SORT_EVERY_ROW + CV_SORT_DESCENDING);
+    Mat hazestPoints = Mat(sortedIndice, Range::all(), Range(0, nSelectedPoints));
     cout << hazestPoints << endl;
     int minRow = imgSize.height, minCol = imgSize.width, maxRow = 0, maxCol = 0;
     int * p = hazestPoints.ptr<int>(0);
@@ -121,14 +132,58 @@ cv::Rect hazestRectOfImage( Mat img, float ratio ) {
     }
     cout << "The hazest region is:" << endl;
     cout << "( " << minRow << ", " << minCol << " ), " << "( " << maxRow << ", " << maxCol << " )" <<endl;
-    return cv::Rect(minCol, minRow, maxCol - minCol,  maxRow - minRow);
+    return Rect(minCol, minRow, maxCol - minCol,  maxRow - minRow);
 }
 
-void brightestPixel( Mat img, cv::Rect rect ) {
-
+Vec3b brightestPixel( Mat image, Rect rect ) {
+    Mat_<Vec3b> img = image;
+    uchar maxBrightness = 0;
+    Size imgSize = image.size();
+    int maxRow, maxCol;
+    for( int row = 0; row < imgSize.height; ++row ) {
+        for( int col = 0; col < imgSize.width; ++col ) {
+            if( maxBrightness < max(img(row, col)) ){
+                maxBrightness = max(img(row, col));
+                maxRow = row; maxCol = col;
+            }
+        }
+    }
+    return img(maxRow, maxCol);
 }
 
-void airlightOfImage( Mat darkChannel, float ratio ) {
-    cv::Rect rect = hazestRectOfImage( darkChannel, ratio );
+Vec3b airlightOfImage( Mat originalImage, Mat darkChannel, float ratio ) {
+    Rect rect = hazestRectOfImage( darkChannel, ratio );
+    Vec3b airlight = brightestPixel(originalImage, rect);
+    cout << "Airlight:" << airlight << endl;
+    return airlight;
 }
 
+Mat transimissionOfImage(Mat img, Vec3b color, float w){
+    Size imgSize = img.size();
+    Mat_<float> transmission = Mat_<float>(imgSize.height, imgSize.width);
+    Mat_<Vec3b> img_ = img;
+    float r,g,b, minChn;
+    for( int row = 0; row < imgSize.height; ++row ){
+        for( int col = 0; col < imgSize.width; ++col ){
+            b = img_(row, col)[0] / float(color[0]);
+            g = img_(row, col)[1] / float(color[1]);
+            r = img_(row, col)[2] / float(color[2]);
+            minChn = min(b, min(g, r));
+            transmission(row, col) = 1 - minChn * w;
+        }
+    }
+    return transmission;
+}
+
+Mat recoverImage( Mat img, Vec3b airlight, Mat t, float t0 ){
+    Size imgSize = img.size();
+    Mat_<Vec3b> img_ = img;
+    Mat_<float> t_ = t;
+    Mat_<Vec3b> dehazedImg = Mat::zeros( imgSize, CV_8UC3 );
+    for( int row = 0; row < imgSize.height; ++row ){
+        for( int col = 0; col < imgSize.width; ++col) {
+            dehazedImg(row, col) = airlight - ( airlight - img_(row, col)  ) / max(t_(row, col), t0);
+        }
+    }
+    return dehazedImg;
+}
