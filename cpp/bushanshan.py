@@ -34,16 +34,17 @@ def darkValue(img, row, col, windowSize):
 	windowColEnd = windowColBegin + windowSize[1]
 	if windowColEnd > h: windowColEnd = h
 
-	for i in range(windowRowEnd + 1):
-		for j in range(windowColEnd + 1):
+	for i in range(windowRowBegin, windowRowEnd + 1):
+		for j in range(windowColBegin, windowColEnd + 1):
 			if img[i, j] < minValue:
 				minValue = img[i, j]
-			# print minValue
+			print minValue
 	return minValue
 
-img = cv2.imread('1.jpg')
-windowSize = [16, 16]
-darkChannlOfImage(img, windowSize)
+img = cv2.imread('2.jpg')
+print img.shape
+# windowSize = [16, 16]
+# darkChannlOfImage(img, windowSize)
 
 
 
