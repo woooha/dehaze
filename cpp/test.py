@@ -43,11 +43,12 @@ def darkValue(img, row, col, windowSize):
 # A是3维的，对应彩色图的三个通道
 def atmosphericLightOfImg(darkChannelMat, originalImage, ratio):
 	pixels, numSelectPixels = pixelOfDarkChannelImage(darkChannelMat, ratio)
-	atmosphericLight = np.zeros(3)
+	atmosphericLight = np.zeros((1, 3))
 	for pixel in pixels:
 		brightPixel = brightestPixel(originalImage, pixel)
 		atmosphericLight += brightPixel	
 	atmosphericLight = atmosphericLight / numSelectPixels
+	atmosphericLight = atmosphericLight[0]
 	return atmosphericLight
 
 # 暗通道图中按照亮度的大小取前0.1%的像素
@@ -61,7 +62,7 @@ def pixelOfDarkChannelImage(img, ratio):
 	for row in range(h):
 		newImg[k*w : (k+1)*w] = img[row, :]
 		k += 1
-	pixelIndexs = np.argsort(newImg)
+	pixelIndexs = cv2.sortIdx(newImg, cv2.SORT_EVERY_COLUMN + cv2.SORT_DESCENDING)
 	for i in range(numSelectPixels):
 		rowOfPixel = pixelIndexs[i] / w
 		colOfPixel = pixelIndexs[i] % w
@@ -78,7 +79,6 @@ def brightestPixel(img, pixel):
 def transmissionOfImage(originalImage, atmosphericLight, windowSize, parameter_w):
 	h, w = originalImage.shape[: 2]
 	transmission = np.zeros((h, w))
-	n = 0
 	imgDiviAtmoLight = np.zeros((img.shape))
 	imgDiviAtmoLight[:, :, 0] = img[:, :, 0] / float(atmosphericLight[0])
 	imgDiviAtmoLight[:, :, 1] = img[:, :, 1] / float(atmosphericLight[1])
@@ -87,10 +87,8 @@ def transmissionOfImage(originalImage, atmosphericLight, windowSize, parameter_w
 	for row in range(h):
 		for col in range(w):
 			minValue = minOfImgDiviAtmoLight(imgDiviAtmoLight, row, col, windowSize)
+			print min(minValue)
 			transmission[row, col] = 1 - parameter_w * min(minValue)
-		n += 1
-		print 'dfafadfd', n
-	print transmission
 	return transmission
 
 # 计算原图中每个像素点除以atmosphericLight，
@@ -127,23 +125,22 @@ def recoverImage(img, atmosphericLight, t0, transmission):
 
 img = cv2.imread('8.jpg')
 windowSize = [15, 15]
-ratio = 0.1
+ratio = 0.001
 t0 = 0.1
 parameter_w = 0.95
-# img = img[:, :, 0]
-# image = np.array([[4,1,3,6], [9,7,5,2]])
-# darkChannelOfImage = darkChannelOfImage(img, [15, 15])
-# atmosphericLight(darkChannelOfImage, img, 0.001)
-
-# atmosphericLight = [83.17687075, 102.29931973, 90.26530612]
-# transmissionOfImage(img, atmosphericLight, [15, 15], 1)
+print img
 
 darkChannelMat = darkChannelOfImage(img, windowSize)
+print darkChannelMat
 atmosphericLight = atmosphericLightOfImg(darkChannelMat, img, ratio)
+print 'atmosphericLight', atmosphericLight
 transmission = transmissionOfImage(img, atmosphericLight, windowSize, parameter_w)
+print transmission
 
 dehazedImg = recoverImage(img, atmosphericLight, t0, transmission)
-
+print 'dadafd',dehazedImg[0]
+print 'adadfa', dehazedImg[1]
+print 'sadfad', dehazedImg[2]
 cv2.imshow('img', img)
 cv2.imshow('darkChannelMat', darkChannelMat)
 cv2.imshow('dehazedImg', dehazedImg)
